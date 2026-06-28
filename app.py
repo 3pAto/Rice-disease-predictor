@@ -1,12 +1,11 @@
 # ============================================================
-# RICEGUARD AI - STREAMLIT APP (STREAMLIT CLOUD COMPATIBLE)
+# RICEGUARD AI - STREAMLIT APP (FIXED: Models in root folder)
 # Save as: app.py
-# Run locally: streamlit run app.py
+# Run: streamlit run app.py
 # ============================================================
 
 import streamlit as st
 import os
-import sys
 
 # ============================================================
 # PAGE CONFIG (Must be first Streamlit command)
@@ -48,20 +47,36 @@ except ImportError as e:
     st.stop()
 
 # ============================================================
-# GET BASE DIRECTORY (Works on both local and cloud)
+# FIXED: Models are in SAME folder as app.py (root of repo)
 # ============================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, 'saved_models')
+MODELS_DIR = BASE_DIR  # FIXED: Was os.path.join(BASE_DIR, 'saved_models')
 
-# Verify models directory exists
-if not os.path.exists(MODELS_DIR):
+# Verify all required files exist
+required_files = [
+    'scaler.pkl', 'label_encoder.pkl', 'feature_params.pkl',
+    'random_forest.pkl', 'svm.pkl', 'knn.pkl',
+    'logistic_regression.pkl', 'naive_bayes.pkl',
+    'decision_tree.pkl', 'xgboost.pkl', 'adaboost.pkl',
+    'extra_trees.pkl', 'lightgbm.pkl'
+]
+
+missing_files = []
+for f in required_files:
+    if not os.path.exists(os.path.join(MODELS_DIR, f)):
+        missing_files.append(f)
+
+if missing_files:
     st.error(f"""
-    ❌ **Models directory not found!**
+    ❌ **Missing required files!**
     
-    Expected: `{MODELS_DIR}`
+    Missing: {', '.join(missing_files)}
     
-    Please ensure your `saved_models` folder is uploaded to GitHub 
-    alongside `app.py`.
+    Expected location: `{MODELS_DIR}`
+    
+    Files found in this folder: {', '.join(os.listdir(MODELS_DIR))[:300]}
+    
+    **Fix:** Please ensure all .pkl files are in the SAME folder as app.py
     """)
     st.stop()
 
