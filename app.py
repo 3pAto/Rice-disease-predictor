@@ -1,21 +1,15 @@
-import streamlit as st
-import numpy as np
-import cv2
-from PIL import Image
-import joblib
-import requests
-from io import BytesIO
-from skimage.feature import hog, graycomatrix, graycoprops
-import os
-import time
-from datetime import datetime
+# ============================================================
+# RICEGUARD AI - STREAMLIT APP (STREAMLIT CLOUD COMPATIBLE)
+# Save as: app.py
+# Run locally: streamlit run app.py
+# ============================================================
 
-# Get base directory
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODELS_DIR = os.path.join(BASE_DIR, 'saved_models')
+import streamlit as st
+import os
+import sys
 
 # ============================================================
-# PAGE CONFIGURATION
+# PAGE CONFIG (Must be first Streamlit command)
 # ============================================================
 st.set_page_config(
     page_title="RiceGuard AI | Disease Detection",
@@ -23,6 +17,53 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ============================================================
+# ERROR HANDLING FOR IMPORTS
+# ============================================================
+try:
+    import numpy as np
+    import cv2
+    from PIL import Image
+    import joblib
+    import requests
+    from io import BytesIO
+    from skimage.feature import hog, graycomatrix, graycoprops
+    import matplotlib.pyplot as plt
+    from datetime import datetime
+    import time
+except ImportError as e:
+    st.error(f"""
+    ❌ **Import Error: {e}**
+    
+    This usually means a required package is missing. 
+    Please check that your `requirements.txt` includes:
+    - opencv-python-headless
+    - scikit-image
+    - scikit-learn
+    - xgboost
+    - lightgbm
+    - joblib
+    """)
+    st.stop()
+
+# ============================================================
+# GET BASE DIRECTORY (Works on both local and cloud)
+# ============================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODELS_DIR = os.path.join(BASE_DIR, 'saved_models')
+
+# Verify models directory exists
+if not os.path.exists(MODELS_DIR):
+    st.error(f"""
+    ❌ **Models directory not found!**
+    
+    Expected: `{MODELS_DIR}`
+    
+    Please ensure your `saved_models` folder is uploaded to GitHub 
+    alongside `app.py`.
+    """)
+    st.stop()
 
 # ============================================================
 # CUSTOM CSS - MODERN DARK THEME
@@ -35,12 +76,10 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
     
-    /* Main background */
     .stApp {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
     }
     
-    /* Header */
     .main-header {
         text-align: center;
         padding: 2rem 0;
@@ -59,7 +98,6 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     
-    /* Cards */
     .glass-card {
         background: rgba(30, 41, 59, 0.7);
         backdrop-filter: blur(10px);
@@ -97,7 +135,6 @@ st.markdown("""
         text-align: center;
     }
     
-    /* Buttons */
     .stButton > button {
         background: linear-gradient(90deg, #10b981, #3b82f6) !important;
         color: white !important;
@@ -115,30 +152,25 @@ st.markdown("""
         box-shadow: 0 10px 30px rgba(16, 185, 129, 0.3) !important;
     }
     
-    /* Sidebar */
     .css-1d391kg {
         background: rgba(15, 23, 42, 0.95) !important;
     }
     
-    /* Progress bars */
     .stProgress > div > div {
         background: linear-gradient(90deg, #10b981, #3b82f6) !important;
         border-radius: 10px !important;
     }
     
-    /* Expander */
     .streamlit-expanderHeader {
         background: rgba(30, 41, 59, 0.5) !important;
         border-radius: 10px !important;
         border: 1px solid rgba(255,255,255,0.1) !important;
     }
     
-    /* Radio buttons */
     .stRadio > label {
         color: #e2e8f0 !important;
     }
     
-    /* File uploader */
     .stFileUploader > div > button {
         background: rgba(30, 41, 59, 0.5) !important;
         border: 2px dashed rgba(16, 185, 129, 0.3) !important;
@@ -146,7 +178,6 @@ st.markdown("""
         color: #94a3b8 !important;
     }
     
-    /* Text input */
     .stTextInput > div > div > input {
         background: rgba(30, 41, 59, 0.5) !important;
         border: 1px solid rgba(255,255,255,0.1) !important;
@@ -154,13 +185,11 @@ st.markdown("""
         color: #e2e8f0 !important;
     }
     
-    /* Multiselect */
     .stMultiSelect > div > div {
         background: rgba(30, 41, 59, 0.5) !important;
         border-radius: 10px !important;
     }
     
-    /* Metric cards */
     .metric-container {
         background: rgba(30, 41, 59, 0.5);
         border-radius: 12px;
@@ -182,20 +211,17 @@ st.markdown("""
         font-size: 0.9rem;
     }
     
-    /* Warning/Info boxes */
     .stAlert {
         border-radius: 12px !important;
         border: none !important;
     }
     
-    /* Image container */
     .image-container {
         border-radius: 16px;
         overflow: hidden;
         box-shadow: 0 8px 32px rgba(0,0,0,0.3);
     }
     
-    /* Footer */
     .footer {
         text-align: center;
         color: #64748b;
@@ -203,7 +229,6 @@ st.markdown("""
         font-size: 0.9rem;
     }
     
-    /* Animation */
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(20px); }
         to { opacity: 1; transform: translateY(0); }
@@ -213,7 +238,6 @@ st.markdown("""
         animation: fadeIn 0.6s ease-out;
     }
     
-    /* Scrollbar */
     ::-webkit-scrollbar {
         width: 8px;
     }
@@ -251,10 +275,17 @@ def load_all_models():
         'LightGBM': 'lightgbm.pkl'
     }
     
+    missing_files = []
+    
     for name, filename in model_files.items():
         filepath = os.path.join(MODELS_DIR, filename)
         if os.path.exists(filepath):
             models[name] = joblib.load(filepath)
+        else:
+            missing_files.append(filename)
+    
+    if missing_files:
+        st.warning(f"⚠️ Missing model files: {', '.join(missing_files)}")
     
     scaler = joblib.load(os.path.join(MODELS_DIR, 'scaler.pkl'))
     label_encoder = joblib.load(os.path.join(MODELS_DIR, 'label_encoder.pkl'))
@@ -265,13 +296,17 @@ def load_all_models():
 try:
     models, scaler, label_encoder, feature_params = load_all_models()
     models_loaded = True
+    if len(models) == 0:
+        st.error("❌ No models loaded! Check saved_models folder.")
+        st.stop()
 except Exception as e:
     st.error(f"❌ Error loading models: {e}")
+    st.info("Please ensure saved_models folder contains all .pkl files")
     models_loaded = False
     st.stop()
 
 # ============================================================
-# RICE PLANT DETECTION (Simple color-based check)
+# RICE PLANT DETECTION
 # ============================================================
 
 def is_rice_plant(image):
@@ -279,26 +314,19 @@ def is_rice_plant(image):
     Simple heuristic to check if image likely contains a rice plant.
     Checks for dominant green color typical of plant leaves.
     """
-    # Convert to HSV for better color analysis
     hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
     
-    # Define green color range for plants
     lower_green = np.array([25, 40, 40])
     upper_green = np.array([85, 255, 255])
     
-    # Create mask for green pixels
     green_mask = cv2.inRange(hsv, lower_green, upper_green)
-    
-    # Calculate percentage of green pixels
     green_ratio = np.sum(green_mask > 0) / (green_mask.shape[0] * green_mask.shape[1])
     
-    # If less than 15% green, likely not a plant
     is_plant = green_ratio > 0.15
     
-    # Additional check: image should have reasonable texture (not blank/solid color)
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     texture_score = cv2.Laplacian(gray, cv2.CV_64F).var()
-    has_texture = texture_score > 50  # Threshold for meaningful texture
+    has_texture = texture_score > 50
     
     return is_plant and has_texture, green_ratio, texture_score
 
@@ -339,7 +367,7 @@ def extract_features(image):
     return np.array(features).reshape(1, -1)
 
 # ============================================================
-# PREDICTION FUNCTION
+# PREDICTION FUNCTIONS
 # ============================================================
 
 def predict_with_model(image, model_name):
@@ -495,7 +523,7 @@ def main():
             selected_models = [st.selectbox(
                 "Select one model:",
                 list(models.keys()),
-                index=6  # Default to XGBoost
+                index=6
             )]
         elif selection_mode == "Multiple Models":
             selected_models = st.multiselect(
@@ -507,7 +535,7 @@ def main():
             if len(selected_models) < 2:
                 st.warning("⚠️ Please select at least 2 models")
                 selected_models = ['XGBoost']
-        else:  # All 10 Models
+        else:
             selected_models = list(models.keys())
             st.success(f"✅ Using all {len(models)} models")
         
@@ -562,7 +590,7 @@ def main():
                 st.image(image, caption="Uploaded Image", use_container_width=True)
                 st.markdown('</div>', unsafe_allow_html=True)
         
-        else:  # Image URL
+        else:
             url = st.text_input(
                 "Enter image URL:",
                 placeholder="https://example.com/rice_leaf.jpg",
@@ -613,7 +641,6 @@ def main():
         """, unsafe_allow_html=True)
         
         if img_array is not None and selected_models:
-            # Check if it's a plant first
             is_plant, _, _ = is_rice_plant(img_array)
             
             if not is_plant:
@@ -621,16 +648,13 @@ def main():
             else:
                 if st.button("🚀 Analyze Disease", type="primary"):
                     with st.spinner("🔬 Analyzing with AI models..."):
-                        # Progress bar animation
                         progress_bar = st.progress(0)
                         for i in range(100):
                             time.sleep(0.01)
                             progress_bar.progress(i + 1)
                         
-                        # Get predictions
                         predictions = predict_with_models(img_array, selected_models)
                         
-                        # Aggregate results
                         all_votes = [pred['predicted_class'] for pred in predictions.values()]
                         vote_counts = {}
                         for vote in all_votes:
@@ -639,7 +663,6 @@ def main():
                         final_prediction = max(vote_counts, key=vote_counts.get)
                         agreement = vote_counts[final_prediction] / len(selected_models)
                         
-                        # Display final result
                         st.markdown("---")
                         
                         rec = get_recommendations(final_prediction)
@@ -665,10 +688,8 @@ def main():
                             </div>
                             """, unsafe_allow_html=True)
                         
-                        # Model Agreement Visualization
                         st.markdown("### 🤝 Model Agreement")
                         
-                        # Create agreement chart
                         agree_cols = st.columns(len(vote_counts))
                         for idx, (cls, count) in enumerate(vote_counts.items()):
                             pct = count / len(selected_models)
@@ -681,10 +702,8 @@ def main():
                                 </div>
                                 """, unsafe_allow_html=True)
                         
-                        # Individual Model Results
                         st.markdown("### 📊 Individual Model Results")
                         
-                        # Sort by confidence
                         sorted_results = sorted(
                             predictions.items(),
                             key=lambda x: x[1]['confidence'],
@@ -700,12 +719,9 @@ def main():
                                 f"**{model_name}**: {top_class} ({confidence*100:.1f}%)",
                                 expanded=(model_name == sorted_results[0][0])
                             ):
-                                # Probability bars for all classes
                                 for cls, prob in sorted(probs.items(), key=lambda x: x[1], reverse=True):
-                                    color = "#10b981" if cls == "Healthy" else "#ef4444"
                                     st.progress(prob, text=f"{cls}: {prob*100:.1f}%")
                         
-                        # Recommendations
                         st.markdown("---")
                         st.markdown("### 💡 Management Recommendations")
                         
@@ -729,7 +745,6 @@ def main():
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        # Timestamp
                         st.markdown(f"""
                         <div class="footer">
                             Analysis completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
